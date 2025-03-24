@@ -1,0 +1,8 @@
+[package]
+name = "day12"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+deunicode = "1.6.1"
+unicode-normalization = "0.1.24"
