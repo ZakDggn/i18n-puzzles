@@ -3,47 +3,44 @@ use std::fs;
 type FromUtf16Result = Result<String, std::string::FromUtf16Error>;
 const MAX_LATIN_CODE: u16 = 0x1eff; // End of "Latin Extended Additional" block
 
-fn decode_utf16be(bytes: &[u8]) -> FromUtf16Result {
-    let u16s_be: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|chunk| u16::from(chunk[0]) * 256 + u16::from(chunk[1]))
-        .collect();
-    String::from_utf16(&u16s_be)
+enum Endianness {
+    BE,
+    LE,
 }
 
-fn decode_utf16le(bytes: &[u8]) -> FromUtf16Result {
-    let u16s_le: Vec<u16> = bytes
+fn decode_utf16(bytes: &[u8], endianness: &Endianness) -> FromUtf16Result {
+    let u16s: Vec<u16> = bytes
         .chunks_exact(2)
-        .map(|chunk| u16::from(chunk[1]) * 256 + u16::from(chunk[0]))
+        .map(|chunk| {
+            let (hi, lo) = match endianness {
+                Endianness::BE => (0, 1),
+                Endianness::LE => (1, 0),
+            };
+            u16::from(chunk[hi]) * 256 + u16::from(chunk[lo])
+        })
         .collect();
-    String::from_utf16(&u16s_le)
+    String::from_utf16(&u16s)
 }
 
 fn decode(bytes: &[u8]) -> String {
     if bytes[..2] == [0xfe, 0xff] {
-        return decode_utf16be(&bytes[2..]).unwrap();
+        return decode_utf16(&bytes[2..], &Endianness::BE).unwrap();
     } else if bytes[..2] == [0xff, 0xfe] {
-        return decode_utf16le(&bytes[2..]).unwrap();
+        return decode_utf16(&bytes[2..], &Endianness::LE).unwrap();
     } else if bytes[..3] == [0xef, 0xbb, 0xbf] {
         return std::str::from_utf8(&bytes[3..]).unwrap().to_owned();
     }
     if let Ok(utf8) = String::from_utf8(bytes.to_owned()) {
         return utf8;
     }
-    if let Ok(utf16be) = decode_utf16be(bytes) {
-        if utf16be
-            .chars()
-            .all(|c| c.is_alphabetic() && (c as u16) <= MAX_LATIN_CODE)
-        {
-            return utf16be;
-        }
-    }
-    if let Ok(utf16le) = decode_utf16le(bytes) {
-        if utf16le
-            .chars()
-            .all(|c| c.is_alphabetic() && (c as u16) <= MAX_LATIN_CODE)
-        {
-            return utf16le;
+    for endianness in [Endianness::BE, Endianness::LE] {
+        if let Ok(utf16) = decode_utf16(bytes, &endianness) {
+            if utf16
+                .chars()
+                .all(|c| c.is_alphabetic() && (c as u16) <= MAX_LATIN_CODE)
+            {
+                return utf16;
+            }
         }
     }
     let latin1: String = bytes.iter().map(|&b| char::from(b)).collect();
